@@ -400,9 +400,10 @@
 			var JourneyVersion;
 			//var UserId;
 			var json;
-			/*var readGreenimage = 'false';
-			var InboxGreenimage = 'false';
-			var dkimGreenimage = 'false'; var spfGreenimage = 'false';*/
+			var readGreenimage;
+			var InboxGreenimage;
+			var dkimGreenimage;
+			var spfGreenimage;
 			Headers.push(["Inbox Tracker Campaigns", "Journey", "Status", "Campaign Health", " ", "", ""]);
 			let sparkpostUserId = $('#sparkpostUserId').val();
 			let refreshtoken = $('#rt').val();
@@ -426,16 +427,6 @@
 					}
 				}).catch(function (error) {
 				})
-
-			/*axios({
-			   method: "GET",
-			   url: "/sparkpostusersession",
-			   })
-			   .then((result) => {
-				 UserId =result.data.accountID;
-				 }).catch(function (error) {
-				   console.log(error);
-				 })*/
 
 			let newrefreshtoken = $('#rt').val();
 			const params = {
@@ -470,14 +461,384 @@
 									if (response.data) {
 										$('#rt').val(response.data.refreshToken);
 										if (response.data.activity.activities) {
-											var activityArray = new Array();
+
 											for (var i = 0; i < response.data.activity.activities.length; i++) {
+							
 												if (response.data.activity.activities[i].type == 'EMAILV2') {
+													let emailId = response.data.activity.activities[i].configurationArguments.triggeredSend["emailId"];
+													var senderProfileIdRefreshToken = $('#rt').val();
 													activity = true;
 													journeyCount++;
 													var data = response.config.data;
 													var json = JSON.parse(data);
-													activityArray.push([json["name"], json["status"], json["journeyId"], response.data.activity.activities[i].arguments["emailSubjectDataBound"], response.data.activity.activities[i]["name"], json["version"]]);
+													axios({
+														method: "GET",
+														url: "/getsenderdomain",
+														params: {
+															senderProfileID: response.data.activity.activities[i].configurationArguments.triggeredSend.senderProfileId,
+															emailSubject: response.data.activity.activities[i].arguments["emailSubjectDataBound"],
+															templateName: response.data.activity.activities[i]["name"],
+															refreshToken: senderProfileIdRefreshToken, tssd: tssd, memberid: memberid, soapInstance: soapInstance,
+														},
+													}).then(function (response) {
+														var activityArray = new Array();
+														$('#rt').val(response.data.refreshToken);
+														console.log("Response for the sender profile Domain Name ::: " + JSON.stringify(response.data))
+														var sentParams = response.config.params;
+														var senderProfileDomainName = response.data.domainName
+														if (senderProfileDomainName.indexOf("@") >= 0) {
+														    senderProfileDomainName = response.data.domainName.split("@")[1]
+													  }
+														console.log("sender Profile Domain Name ::: " + senderProfileDomainName);
+														console.log("response for the senderProfileID " + JSON.stringify(response.data));
+														activityArray.push([json["name"], json["status"], json["journeyId"], sentParams["emailSubject"], sentParams["templateName"], json["version"], senderProfileDomainName, emailId]);
+														if (activityArray.length > 0) {
+															for (var i = 0; i < activityArray.length; i++) {
+																axios({
+																	method: "POST",
+																	url: "/getstatus",
+																	data: { accountID: UserId, tssd: tssd, refreshToken: response.data.refreshToken, emailId: activityArray[i][7], subject: activityArray[i][3], journeyName: activityArray[i][0], journeyStatus: activityArray[i][1], journeyId: activityArray[i][2], journeyversion: activityArray[i][5], activityname: activityArray[i][4], senderProfileDomain: activityArray[i][6]},
+																})
+																	.then(function (response) {
+																		sparkSubject = false;
+																		CampaignCount++;
+																		console.log("get status response data ::: " + JSON.stringify(response.data));
+																		if (response) {
+																			if(response.data.refreshToken) $('#rt').val(response.data.refreshToken);
+																			Customerlen = false;
+																			var data = response.config.data;
+																			json = JSON.parse(data);
+																			JourneyId = json["journeyId"];
+																			JourneyVersion = json["journeyversion"];
+
+																			if (response.data.subjectData) {
+																				sparkSubjectCount = 0;
+
+																				//for (ivar = 0; ivar < response.data.length; ivar++) {
+																				sparkSubjectCount++;
+																				//sometime we got multiple response with correct subject and incorrect subject.
+																				//here we handle duplicate subject to add else statement. 
+																				/*if(sparkSubjectCount == response.data.length && !sparkSubject
+																		   ){
+																			   sparkSubject=false;
+																			 } */
+																				//if (journeyname != undefined && journeyname != json["journeyName"]) {
+																				//CampaignCount = 1;
+
+																				//}
+
+																				//if ((response.data.length == 1) ||(json["subject"] == response.data[ivar]["subject"])) {
+																				//this true used for got subject from sparkpost
+																				sparkSubject = true;
+																				Customerlen = true;
+																				journeyname = json["journeyName"];
+																				journeySubject = json["subject"];
+																				var fromaddress = response.data.subjectData["fromAddress"];
+																				var domainName = fromaddress.split("@");
+																				var spfvalue;
+																				var spfimg;
+																				var dkimvalue;
+																				var dkimimg;
+																				var validDomain = {};
+																				var engagementimg;
+																				var InboxImage;
+																				var str;
+																				var readRateValue;
+																				if (response.data.subjectData["subject"].includes("'")) {
+																					str = response.data.subjectData["subject"];
+																					journeySubject = str;
+																				} else {
+																					str = response.data.subjectData["subject"];
+																				}
+																				if (str.includes(",")) {
+																					str = str.replaceAll(",", "");
+																					journeySubject = str;
+																				}
+																				//if (json["senderProfileDomain"] == domainName[1]) {
+																				for (var i = 0; i < Domains.length; i++) {
+																					if (domainName[1] == Domains[i]["Properties"][0]["Property"][1]["Value"]) {
+																						validDomain = Domains[i];
+																					}
+																				}
+
+																				if ((Object.keys(validDomain).length > 0)) {
+																					// if(response.data[ivar]["reputation"]["spf"] && response.data[ivar]["reputation"]["dkim"]){
+																					//if((Math.round(response.data[ivar]["reputation"]["dkim"]["passPercentageWeighted"]) || Math.round(response.data[ivar]["reputation"]["dkim"]["failPercentageWeighted"]) != 0 ) && (Math.round(response.data[ivar]["reputation"]["spf"]["passPercentageWeighted"]) || Math.round(response.data[ivar]["reputation"]["spf"]["failPercentageWeighted"]) != 0)){
+																					if ((validDomain["Properties"][0]["Property"][2]["Value"] != '' && response.data.subjectData["overallInboxPercentWeighted"]) || (validDomain["Properties"][0]["Property"][2]["Value"] !== '' && response.data.subjectData["overallInboxPercentWeighted"] === 0)) {
+																						InboxImage = (Math.round(response.data.subjectData["overallInboxPercentWeighted"] * 100) >= validDomain["Properties"][0]["Property"][2]["Value"]) ? '<img src="/images/inbox_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/inbox_red.png" alt="logo" heigth="12" width="15"></img>';
+																					} else {
+																						InboxImage = '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>';
+																					}
+																					if ((response.data.subjectData["overallInboxPercentWeighted"] || response.data.subjectData["overallInboxPercentWeighted"] === 0) && (validDomain["Properties"][0]["Property"][2]["Value"] != '')) {
+																						//these condition used for only issues only
+																						InboxGreenimage = (Math.round(response.data.subjectData["overallInboxPercentWeighted"] * 100) >= validDomain["Properties"][0]["Property"][2]["Value"]) ? 'true' : 'false';
+																					} else {
+																						//InboxGreenimage = 'true';
+																						InboxGreenimage = 'gray';
+																					}
+																					if (!response.data.subjectData["readRatePercent"] && response.data.subjectData["readRatePercent"] !== 0) {
+																						readRateValue = '';
+																					} else {
+																						//these condtion used for checking null readRatePercent
+																						readRateValue = Math.round(response.data.subjectData["readRatePercent"] * 100);
+																					}
+
+																					//these condition used for green img or red condition
+																					if (validDomain["Properties"][0]["Property"][3]["Value"] != '' && readRateValue !== '') {
+																						engagementimg = readRateValue >= validDomain["Properties"][0]["Property"][3]["Value"] ? '<img src="/images/read_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/read_red.png" alt="logo" heigth="12" width="15"></img>';
+																					}
+																					else {
+																						engagementimg = '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>';
+																					}
+																					if (readRateValue !== '' && validDomain["Properties"][0]["Property"][3]["Value"] != '') {
+																						//these condition used for display issues only
+																						readGreenimage = readRateValue >= validDomain["Properties"][0]["Property"][3]["Value"] ? 'true' : 'false';
+																					} else {
+																						//readGreenimage = 'true';
+																						readGreenimage = 'gray';
+																					}
+																					//	var spfrange=response.data[ivar]["reputation"]["spf"];
+																					if (response.data.subjectData["reputation"]) {
+																						//these condition used for spfrange value null 
+																						if (!response.data.subjectData["reputation"]["spf"]) {
+																							//if value null set 0 for spf value
+																							spfvalue = 0;
+																						} if (!response.data.subjectData["reputation"]["spf"]["passPercentageWeighted"] && response.data.subjectData["reputation"]["spf"]["passPercentageWeighted"] !== 0) {
+																							//if value null set 0 for spf value
+																							spfvalue = '';
+																						} else {
+																							//  these condtion used for checking null passInboxPercentageWeighted
+																							spfvalue = Math.round(response.data.subjectData["reputation"]["spf"]["passPercentageWeighted"] * 100);
+																						}
+																						if (!response.data.subjectData["reputation"]["dkim"]) {
+																							//if value null set 0 for dkim value
+																							dkimvalue = 0;
+																						} if (!response.data.subjectData["reputation"]["dkim"]["passPercentageWeighted"] && response.data.subjectData["reputation"]["dkim"]["passPercentageWeighted"] !== 0) {
+																							dkimvalue = '';
+																						} else {
+																							//  these condtion used for checking null passInboxPercentageWeighted
+																							dkimvalue = Math.round(response.data.subjectData["reputation"]["dkim"]["passPercentageWeighted"] * 100);
+																						}
+																						if (validDomain["Properties"][0]["Property"][4]["Value"] != '' && spfvalue !== '') {
+																							//these condition used for green img or red condition
+																							spfimg = (spfvalue >= validDomain["Properties"][0]["Property"][4]["Value"]) ? '<img src="/images/spf_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/spf_red.png" alt="logo" heigth="12" width="15"></img>';
+																						} else {
+																							//these condition used for gray img
+																							spfimg = '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>';
+																						}
+																						if (spfvalue !== '' && validDomain["Properties"][0]["Property"][4]["Value"] != '') {
+																							//these condition used for display issues only
+																							spfGreenimage = (spfvalue >= validDomain["Properties"][0]["Property"][4]["Value"]) ? 'true' : 'false';
+																						} else {
+																							//spfGreenimage = 'true';
+																							spfGreenimage = 'gray';
+																						}
+																						//these condition used for green img or red condition
+																						if (validDomain["Properties"][0]["Property"][5]["Value"] != '' && dkimvalue !== '') {
+																							dkimimg = (dkimvalue >= validDomain["Properties"][0]["Property"][5]["Value"]) ? '<img src="/images/dkim_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/dkim_red.png" alt="logo" heigth="12" width="15"></img>';
+																						} else {
+																							dkimimg = '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>';
+																						}
+																						if (dkimvalue !== '' && validDomain["Properties"][0]["Property"][5]["Value"] != '') {
+																							//these condition used for display issues only
+																							dkimGreenimage = (dkimvalue >= validDomain["Properties"][0]["Property"][5]["Value"]) ? 'true' : 'false';
+																						} else {
+																							//dkimGreenimage = 'true';
+																							dkimGreenimage = 'gray';
+																						}
+																					} else {
+																						spfimg = '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>';
+																						dkimimg = '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>';
+																						//spfGreenimage = 'true';gray
+																						//dkimGreenimage = 'true';
+																						spfGreenimage = 'gray';
+																						dkimGreenimage = 'gray';
+																					}
+																					campaign.push([json["journeyName"], response.data.subjectData["lastSeen"], str, readGreenimage, InboxGreenimage, dkimGreenimage, InboxImage, engagementimg, spfimg, dkimimg, spfGreenimage, json["activityname"], response.data.subjectData["campaignIdentifier"], "common"]);
+																					// }
+																					// } 
+																				} else {
+																					campaign.push([json["journeyName"], response.data.subjectData["lastSeen"], str, 'gray', 'gray', 'gray', '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>', 'gray', json["activityname"], response.data.subjectData["campaignIdentifier"], "common"]);
+																				}
+																				
+																			}
+																			//this condition used for sparkpost subject calculation
+																			else {
+																				var str;
+																				if (json["subject"].includes("'")) {
+																					str = json["subject"];
+																				} else {
+																					str = json["subject"];
+																				}
+																				if (str.includes(",")) {
+																					str = str.replaceAll(",", "");
+																				}
+																				campaign.push([json["journeyName"], 'true', str, 'gray', 'gray', 'gray', '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>', 'gray', json["activityname"], '', "common"])
+																			}
+
+																			var campaignArray = undefined;
+																			if (campaign.length > 0) {
+																				campaign.sort().reverse();
+																				var duplicate = [];
+																				var duplicatesub = '';
+																				/*campaignArray = campaign.filter(function (el, i) {
+																					//duplicatesub = el[0] + ',' + el[2];
+																					duplicatesub = el[0];
+																					if (duplicate.indexOf(duplicatesub) == -1) {
+																						duplicate.push(duplicatesub);
+																						return true;
+																					}
+																					return false;
+
+																				});
+																				Promise.all(campaignArray);*/
+
+																			}
+																			if (campaign && campaign != undefined) {
+																				//templatename.push([campaignArray.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaignArray, JourneyId, JourneyVersion]);
+																				templatename.push([campaign.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaign, JourneyId, JourneyVersion]);
+																				/*if (Customerlen) {
+																					templatename.push([campaignArray.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaignArray, JourneyId, JourneyVersion]);
+																				} else {
+																					templatename.push([campaignArray.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaignArray, JourneyId, JourneyVersion]);
+																				}*/
+																			} else {
+																				console.log("ERROR: The JB Subject didn't match any subject.  JB Subject: " + json["subject"]);
+																				journeyCount--; //HACK: Handle the case where the subjects don't match at all.
+																			}
+																		}
+
+																		console.log("journeyCount:" + journeyCount + ", templatelen:" + templatename.length);
+																		if (journeyCount == templatename.length) {
+																			templatename.sort(function (a, b) {
+																				var a1 = a[0], b1 = b[0];
+																				return b1 - a1;
+																			});
+																			var duplicate = [];
+																			var duplicatesub = '';
+																			var ret = new Array;
+
+																			campaignArray = templatename.filter(function (el, i) {
+																				if (duplicate.indexOf(el[1]) == -1) {
+																					duplicate.push(el[1]);
+																					return true;
+																				}
+
+																				return false;
+
+																			});
+																			var table = document.createElement("TABLE");
+																			table.setAttribute('id', 'TableRec')
+																			table.border = "0";
+																			//Get the count of columns.
+																			var columnCount = Headers[0].length;
+																			//Add the header row.
+																			var row = table.insertRow(-1);
+																			for (var i = 0; i < columnCount; i++) {
+																				var headerCell = document.createElement("TH");
+																				if (i == 0) {
+																					headerCell.width = '20%';
+																				}
+																				if (i == 1) {
+																					headerCell.width = '35%';
+																				}
+																				if (i == 3) {
+																					headerCell.width = '10%';
+																				}
+																				if (i == 4) {
+																					headerCell.width = '20%';
+
+																				}
+																				headerCell.innerHTML = Headers[0][i];
+																				row.appendChild(headerCell);
+																			}
+																			for (var i = 0; i < campaignArray.length; i++) {
+																				row = table.insertRow(-1);
+																				var flameIcon;
+																				var grayIcon = false;
+																				var greenIcon = false;
+																				var redIcon = false; for (var j = 0; j < columnCount; j++) {
+																					var cell = row.insertCell(-1);
+																					if (j == 0) {
+																						var templateCount = 0;
+																						var sparkSubjectCount = 0;
+																						for (var k = 0; k < campaignArray[i][4].length; k++) {
+																							if (campaignArray[i][1] == campaignArray[i][4][k][0]) {
+																								templateCount++;
+																								if (campaignArray[i][4][k][1] == 'true') {
+																									sparkSubjectCount++;
+																								}
+																								if (campaignArray[i][4][k][3] == 'gray' && campaignArray[i][4][k][4] == 'gray' && campaignArray[i][4][k][5] == 'gray' && campaignArray[i][4][k][10] == 'gray') {
+																									//flameIcon='<img class = "textalignImg" src="/images/flame_gray.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																									grayIcon = true;
+																								}
+																								else if (campaignArray[i][4][k][3] == 'false' || campaignArray[i][4][k][4] == 'false' || campaignArray[i][4][k][5] == 'false' || campaignArray[i][4][k][10] == 'false') {
+																									//flameIcon='<img class = "textalignImg" src="/images/flame_red.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																									//break;
+																									redIcon = true;
+																								} else if (campaignArray[i][4][k][3] == 'true' || campaignArray[i][4][k][4] == 'true' || campaignArray[i][4][k][5] == 'true' || campaignArray[i][4][k][10] == 'true') {
+																									//flameIcon='<img class = "textalignImg" src="/images/flame_green.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																									greenIcon = true;
+																								}
+																							}
+
+																						}
+
+
+																						var aTag = document.createElement("a");
+																						aTag.setAttribute('href', "#");
+																						aTag.setAttribute('class', "pointer spanTracker");
+																						aTag.setAttribute('data-rowid', i + 1);
+																						aTag.setAttribute('onclick', "dynamicTable(event,'" + escapeQuotes("" + campaignArray[i][4]) + "','" + escapeQuotes("" + campaignArray[i][1]) + "')");
+																						if (sparkSubjectCount == 0) {
+																							aTag.innerHTML = templateCount + '/' + templateCount;
+																						} else {
+																							aTag.innerHTML = (templateCount - sparkSubjectCount) + '/' + templateCount;
+																						}
+																						cell.appendChild(aTag);
+																					} else if (j == 1) {
+																						var aTag = document.createElement("a");
+																						aTag.setAttribute('class', "atag pointer");
+																						aTag.setAttribute('onclick', "MCJourney(event,'" + campaignArray[i][5] + "','" + campaignArray[i][6] + "')");
+																						aTag.innerHTML = campaignArray[i][j];
+																						cell.appendChild(aTag);
+																					} else if (j == 3) {
+																						if (grayIcon && !greenIcon && !redIcon) {
+																							cell.innerHTML = '<img class = "textalignImg" src="/images/flame_gray.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																						} else if (redIcon) {
+																							cell.innerHTML = '<img class = "textalignImg" src="/images/flame_red.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																						} else if (greenIcon) {
+																							cell.innerHTML = '<img class = "textalignImg" src="/images/flame_green.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
+																						}
+																					}
+																					else if (j == 4 || j == 5 || j == 6) {
+																						var aTag = document.createElement("font");
+																						aTag.setAttribute('style', "display:none");
+																						aTag.innerHTML = campaignArray[i][j];
+																						cell.appendChild(aTag);
+																					}
+																					else {
+																						cell.innerHTML = campaignArray[i][j];
+																					}
+																				}
+																			}
+																			var dvTable = document.getElementById("dvTable");
+																			dvTable.innerHTML = "";
+																			dvTable.appendChild(table);
+
+																			hideSpinner();
+
+																		}
+																	}).catch(function (error) {
+																		console.log("error when getting status" + error);
+																	});
+															}
+														}
+													}).catch(function (error) {
+														console.log("Error getting profile ID's mail" + error)
+													});
+
+													console.log("Sender profile ID ::: " + response.data.activity.activities[i].configurationArguments.triggeredSend.senderProfileId);
 												}
 											}
 											/*if (!activity) {
@@ -487,363 +848,7 @@
 												activityArray.push([json["name"], json["status"], json["journeyId"], '', '', json["version"]]);
 											}*/
 											//customers.push(['0/' + journeyCount, response.data.activity.name, 'Published', '<img class = "textalignImg" src="/images/flame_green.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>', response.data.activity.id]);
-											if (activityArray.length > 0) {
-												for (var i = 0; i < activityArray.length; i++) {
-													axios({
-														method: "POST",
-														url: "/getstatus",
-														data: { accountID: UserId, subject: activityArray[i][3], journeyName: activityArray[i][0], journeyStatus: activityArray[i][1], journeyId: activityArray[i][2], journeyversion: activityArray[i][5], activityname: activityArray[i][4] },
-													})
-														.then(function (response) {
-															sparkSubject = false;
-															CampaignCount++;
-															console.log("get status response data ::: " + JSON.stringify(response.data));
-															if (response) {
-																Customerlen = false;
-																var data = response.config.data;
-																json = JSON.parse(data);
-																JourneyId = json["journeyId"];
-																JourneyVersion = json["journeyversion"];
 
-																if (response.data.length > 0) {
-																	sparkSubjectCount = 0;
-
-																	for (ivar = 0; ivar < response.data.length; ivar++) {
-																		sparkSubjectCount++;
-																		//sometime we got multiple response with correct subject and incorrect subject.
-																		//here we handle duplicate subject to add else statement. 
-																		/*if(sparkSubjectCount == response.data.length && !sparkSubject
-																   ){
-																	   sparkSubject=false;
-																	 } */
-																		if (journeyname != undefined && journeyname != json["journeyName"]) {
-																			CampaignCount = 1;
-
-																		}
-
-																		if ((response.data.length == 1) ||
-																			(json["subject"] == response.data[ivar]["subject"])) {
-																			//this true used for got subject from sparkpost
-																			sparkSubject = true;
-																			Customerlen = true;
-																			journeyname = json["journeyName"];
-																			journeySubject = json["subject"];
-																			var fromaddress = response.data[ivar]["fromAddress"];
-																			var domainName = fromaddress.split("@");
-																			var spfvalue;
-																			var spfimg;
-																			var dkimvalue;
-																			var dkimimg;
-																			var validDomain = {};
-																			var engagementimg;
-																			var InboxImage;
-																			var str;
-																			var readRateValue;
-																			for (var i = 0; i < Domains.length; i++) {
-																				if (domainName[1] == Domains[i]["Properties"][0]["Property"][1]["Value"]) {
-																					validDomain = Domains[i];
-																				}
-																			}
-																			if (response.data[ivar]["subject"].includes("'")) {
-																				str = response.data[ivar]["subject"];
-																				journeySubject = str;
-																			} else {
-																				str = response.data[ivar]["subject"];
-																			}
-																			if (str.includes(",")) {
-																				str = str.replaceAll(",", "");
-																				journeySubject = str;
-																			}
-																			if ((Object.keys(validDomain).length > 0)) {
-																				// if(response.data[ivar]["reputation"]["spf"] && response.data[ivar]["reputation"]["dkim"]){
-																				//if((Math.round(response.data[ivar]["reputation"]["dkim"]["passPercentageWeighted"]) || Math.round(response.data[ivar]["reputation"]["dkim"]["failPercentageWeighted"]) != 0 ) && (Math.round(response.data[ivar]["reputation"]["spf"]["passPercentageWeighted"]) || Math.round(response.data[ivar]["reputation"]["spf"]["failPercentageWeighted"]) != 0)){
-																				if ((validDomain["Properties"][0]["Property"][2]["Value"] != '' && response.data[ivar]["overallInboxPercentWeighted"]) || (validDomain["Properties"][0]["Property"][2]["Value"] !== '' && response.data[ivar]["overallInboxPercentWeighted"] === 0)) {
-																					InboxImage = (Math.round(response.data[ivar]["overallInboxPercentWeighted"] * 100) >= validDomain["Properties"][0]["Property"][2]["Value"]) ? '<img src="/images/inbox_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/inbox_red.png" alt="logo" heigth="12" width="15"></img>';
-																				} else {
-																					InboxImage = '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>';
-																				}
-																				if ((response.data[ivar]["overallInboxPercentWeighted"] || response.data[ivar]["overallInboxPercentWeighted"] === 0) && (validDomain["Properties"][0]["Property"][2]["Value"] != '')) {
-																					//these condition used for only issues only
-																					InboxGreenimage = (Math.round(response.data[ivar]["overallInboxPercentWeighted"] * 100) >= validDomain["Properties"][0]["Property"][2]["Value"]) ? 'true' : 'false';
-																				} else {
-																					//InboxGreenimage = 'true';
-																					InboxGreenimage = 'gray';
-																				}
-																				if (!response.data[ivar]["readRatePercent"] && response.data[ivar]["readRatePercent"] !== 0) {
-																					readRateValue = '';
-																				} else {
-																					//these condtion used for checking null readRatePercent
-																					readRateValue = Math.round(response.data[ivar]["readRatePercent"] * 100);
-																				}
-
-																				//these condition used for green img or red condition
-																				if (validDomain["Properties"][0]["Property"][3]["Value"] != '' && readRateValue !== '') {
-																					engagementimg = readRateValue >= validDomain["Properties"][0]["Property"][3]["Value"] ? '<img src="/images/read_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/read_red.png" alt="logo" heigth="12" width="15"></img>';
-																				}
-																				else {
-																					engagementimg = '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>';
-																				}
-																				if (readRateValue !== '' && validDomain["Properties"][0]["Property"][3]["Value"] != '') {
-																					//these condition used for display issues only
-																					readGreenimage = readRateValue >= validDomain["Properties"][0]["Property"][3]["Value"] ? 'true' : 'false';
-																				} else {
-																					//readGreenimage = 'true';
-																					readGreenimage = 'gray';
-																				}
-																				//	var spfrange=response.data[ivar]["reputation"]["spf"];
-																				if (response.data[ivar]["reputation"]) {
-																					//these condition used for spfrange value null 
-																					if (!response.data[ivar]["reputation"]["spf"]) {
-																						//if value null set 0 for spf value
-																						spfvalue = 0;
-																					} if (!response.data[ivar]["reputation"]["spf"]["passPercentageWeighted"] && response.data[ivar]["reputation"]["spf"]["passPercentageWeighted"] !== 0) {
-																						//if value null set 0 for spf value
-																						spfvalue = '';
-																					} else {
-																						//  these condtion used for checking null passInboxPercentageWeighted
-																						spfvalue = Math.round(response.data[ivar]["reputation"]["spf"]["passPercentageWeighted"] * 100);
-																					}
-																					if (!response.data[ivar]["reputation"]["dkim"]) {
-																						//if value null set 0 for dkim value
-																						dkimvalue = 0;
-																					} if (!response.data[ivar]["reputation"]["dkim"]["passPercentageWeighted"] && response.data[ivar]["reputation"]["dkim"]["passPercentageWeighted"] !== 0) {
-																						dkimvalue = '';
-																					} else {
-																						//  these condtion used for checking null passInboxPercentageWeighted
-																						dkimvalue = Math.round(response.data[ivar]["reputation"]["dkim"]["passPercentageWeighted"] * 100);
-																					}
-																					if (validDomain["Properties"][0]["Property"][4]["Value"] != '' && spfvalue !== '') {
-																						//these condition used for green img or red condition
-																						spfimg = (spfvalue >= validDomain["Properties"][0]["Property"][4]["Value"]) ? '<img src="/images/spf_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/spf_red.png" alt="logo" heigth="12" width="15"></img>';
-																					} else {
-																						//these condition used for gray img
-																						spfimg = '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>';
-																					}
-																					if (spfvalue !== '' && validDomain["Properties"][0]["Property"][4]["Value"] != '') {
-																						//these condition used for display issues only
-																						spfGreenimage = (spfvalue >= validDomain["Properties"][0]["Property"][4]["Value"]) ? 'true' : 'false';
-																					} else {
-																						//spfGreenimage = 'true';
-																						spfGreenimage = 'gray';
-																					}
-																					//these condition used for green img or red condition
-																					if (validDomain["Properties"][0]["Property"][5]["Value"] != '' && dkimvalue !== '') {
-																						dkimimg = (dkimvalue >= validDomain["Properties"][0]["Property"][5]["Value"]) ? '<img src="/images/dkim_green.png" alt="logo" heigth="12" width="15"></img>' : '<img src="/images/dkim_red.png" alt="logo" heigth="12" width="15"></img>';
-																					} else {
-																						dkimimg = '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>';
-																					}
-																					if (dkimvalue !== '' && validDomain["Properties"][0]["Property"][5]["Value"] != '') {
-																						//these condition used for display issues only
-																						dkimGreenimage = (dkimvalue >= validDomain["Properties"][0]["Property"][5]["Value"]) ? 'true' : 'false';
-																					} else {
-																						//dkimGreenimage = 'true';
-																						dkimGreenimage = 'gray';
-																					}
-																				} else {
-																					spfimg = '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>';
-																					dkimimg = '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>';
-																					//spfGreenimage = 'true';gray
-																					//dkimGreenimage = 'true';
-																					spfGreenimage = 'gray';
-																					dkimGreenimage = 'gray';
-																				}
-																				campaign.push([json["journeyName"], response.data[ivar]["lastSeen"], str, readGreenimage, InboxGreenimage, dkimGreenimage, InboxImage, engagementimg, spfimg, dkimimg, spfGreenimage, json["activityname"], response.data[ivar]["campaignIdentifier"], "common"]);
-																				// }
-																				// } 
-																			} else {
-																				campaign.push([json["journeyName"], response.data[ivar]["lastSeen"], str, 'gray', 'gray', 'gray', '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>', 'gray', json["activityname"], response.data[ivar]["campaignIdentifier"], "common"]);
-																			}
-
-
-
-
-																		}
-																		//this else used for nonmatch sparkpost subject
-																		else {
-																			var str;
-																			if (json["subject"].includes("'")) {
-																				str = json["subject"];
-																			} else {
-																				str = json["subject"];
-																			}
-																			if (str.includes(",")) {
-																				str = str.replaceAll(",", "");
-																			}
-																			//we have lot of duplicate subject from sparkpost.to avoid multiple time push to samesubject.here we push subject only one time
-																			if ((!sparkSubject && sparkSubject != undefined) && (sparkSubjectCount == response.data.length)) {
-																				campaign.push([json["journeyName"], 'true', str, 'gray', 'gray', 'gray', '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>', 'gray', json["activityname"], '', "common"])
-																			}
-																		}
-																	}
-																}
-																//this condition used for sparkpost subject calculation
-																else {
-																	var str;
-																	if (json["subject"].includes("'")) {
-																		str = json["subject"];
-																	} else {
-																		str = json["subject"];
-																	}
-																	if (str.includes(",")) {
-																		str = str.replaceAll(",", "");
-																	}
-																	campaign.push([json["journeyName"], 'true', str, 'gray', 'gray', 'gray', '<img src="/images/inbox_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/engagement_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/spf_idle.png" alt="logo" heigth="12" width="15"></img>', '<img src="/images/dkim_idle.png" alt="logo" heigth="12" width="15"></img>', 'gray', json["activityname"], '', "common"])
-																}
-
-																var campaignArray = undefined;
-																if (campaign.length > 0) {
-																	campaign.sort().reverse();
-																	var duplicate = [];
-																	var duplicatesub = '';
-																	campaignArray = campaign.filter(function (el, i) {
-																		duplicatesub = el[0] + ',' + el[2];
-																		if (duplicate.indexOf(duplicatesub) == -1) {
-																			duplicate.push(duplicatesub);
-																			return true;
-																		}
-																		return false;
-
-																	});
-																	Promise.all(campaignArray);
-																}
-																if (campaignArray && campaignArray != undefined) {
-																	if (Customerlen) {
-																		templatename.push([campaignArray.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaignArray, JourneyId, JourneyVersion]);
-																	} else {
-																		templatename.push([campaignArray.length, json["journeyName"], json["journeyStatus"], '<img class = "textalignImg" src="/images/flame_red.png', campaignArray, JourneyId, JourneyVersion]);
-																	}
-																} else {
-																	console.log("ERROR: The JB Subject didn't match any subject.  JB Subject: " + json["subject"]);
-																	journeyCount--; //HACK: Handle the case where the subjects don't match at all.
-																}
-															}
-
-															console.log("journeyCount:" + journeyCount + ", templatelen:" + templatename.length);
-															if (journeyCount == templatename.length) {
-																templatename.sort(function (a, b) {
-																	var a1 = a[0], b1 = b[0];
-																	return b1 - a1;
-																});
-																var duplicate = [];
-																var duplicatesub = '';
-																var ret = new Array;
-
-																campaignArray = templatename.filter(function (el, i) {
-																	if (duplicate.indexOf(el[1]) == -1) {
-																		duplicate.push(el[1]);
-																		return true;
-																	}
-
-																	return false;
-
-																});
-																var table = document.createElement("TABLE");
-																table.setAttribute('id', 'TableRec')
-																table.border = "0";
-																//Get the count of columns.
-																var columnCount = Headers[0].length;
-																//Add the header row.
-																var row = table.insertRow(-1);
-																for (var i = 0; i < columnCount; i++) {
-																	var headerCell = document.createElement("TH");
-																	if (i == 0) {
-																		headerCell.width = '20%';
-																	}
-																	if (i == 1) {
-																		headerCell.width = '35%';
-																	}
-																	if (i == 3) {
-																		headerCell.width = '10%';
-																	}
-																	if (i == 4) {
-																		headerCell.width = '20%';
-
-																	}
-																	headerCell.innerHTML = Headers[0][i];
-																	row.appendChild(headerCell);
-																}
-																for (var i = 0; i < campaignArray.length; i++) {
-																	row = table.insertRow(-1);
-																	var flameIcon;
-																	var grayIcon = false;
-																	var greenIcon = false;
-																	var redIcon = false; for (var j = 0; j < columnCount; j++) {
-																		var cell = row.insertCell(-1);
-																		if (j == 0) {
-																			var templateCount = 0;
-																			var sparkSubjectCount = 0;
-																			for (var k = 0; k < campaignArray[i][4].length; k++) {
-																				if (campaignArray[i][1] == campaignArray[i][4][k][0]) {
-																					templateCount++;
-																					if (campaignArray[i][4][k][1] == 'true') {
-																						sparkSubjectCount++;
-																					}
-																					if (campaignArray[i][4][k][3] == 'gray' && campaignArray[i][4][k][4] == 'gray' && campaignArray[i][4][k][5] == 'gray' && campaignArray[i][4][k][10] == 'gray') {
-																						//flameIcon='<img class = "textalignImg" src="/images/flame_gray.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																						grayIcon = true;
-																					}
-																					else if (campaignArray[i][4][k][3] == 'false' || campaignArray[i][4][k][4] == 'false' || campaignArray[i][4][k][5] == 'false' || campaignArray[i][4][k][10] == 'false') {
-																						//flameIcon='<img class = "textalignImg" src="/images/flame_red.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																						//break;
-																						redIcon = true;
-																					} else if (campaignArray[i][4][k][3] == 'true' || campaignArray[i][4][k][4] == 'true' || campaignArray[i][4][k][5] == 'true' || campaignArray[i][4][k][10] == 'true') {
-																						//flameIcon='<img class = "textalignImg" src="/images/flame_green.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																						greenIcon = true;
-																					}
-																				}
-
-																			}
-
-
-																			var aTag = document.createElement("a");
-																			aTag.setAttribute('href', "#");
-																			aTag.setAttribute('class', "pointer spanTracker");
-																			aTag.setAttribute('data-rowid', i + 1);
-																			aTag.setAttribute('onclick', "dynamicTable(event,'" + escapeQuotes("" + campaignArray[i][4]) + "','" + escapeQuotes("" + campaignArray[i][1]) + "')");
-																			if (sparkSubjectCount == 0) {
-																				aTag.innerHTML = templateCount + '/' + templateCount;
-																			} else {
-																				aTag.innerHTML = (templateCount - sparkSubjectCount) + '/' + templateCount;
-																			}
-																			cell.appendChild(aTag);
-																		} else if (j == 1) {
-																			var aTag = document.createElement("a");
-																			aTag.setAttribute('class', "atag pointer");
-																			aTag.setAttribute('onclick', "MCJourney(event,'" + campaignArray[i][5] + "','" + campaignArray[i][6] + "')");
-																			aTag.innerHTML = campaignArray[i][j];
-																			cell.appendChild(aTag);
-																		} else if (j == 3) {
-																			if (grayIcon && !greenIcon && !redIcon) {
-																				cell.innerHTML = '<img class = "textalignImg" src="/images/flame_gray.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																			} else if (redIcon) {
-																				cell.innerHTML = '<img class = "textalignImg" src="/images/flame_red.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																			} else if (greenIcon) {
-																				cell.innerHTML = '<img class = "textalignImg" src="/images/flame_green.png" alt="logo" align = "center" height="30" width="30" style="margin-left: 21%;"></img>';
-																			}
-																		}
-																		else if (j == 4 || j == 5 || j == 6) {
-																			var aTag = document.createElement("font");
-																			aTag.setAttribute('style', "display:none");
-																			aTag.innerHTML = campaignArray[i][j];
-																			cell.appendChild(aTag);
-																		}
-																		else {
-																			cell.innerHTML = campaignArray[i][j];
-																		}
-																	}
-																}
-																var dvTable = document.getElementById("dvTable");
-																dvTable.innerHTML = "";
-																dvTable.appendChild(table);
-
-																hideSpinner();
-
-															}
-														}).catch(function (error) {
-															console.log("error when getting status" + error);
-														});
-												}
-											}
 
 										}
 									}
